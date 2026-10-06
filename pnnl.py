@@ -13,8 +13,15 @@ DATA_FILE = "pnl_data.json" # Store P&L data in a JSON file
 COLOR_WIN = "#8fd19e"
 COLOR_LOSS = "#f2a6a6"
 COLOR_EMPTY = "#e6e6e6"
-
-
+COLOR_WIN_STRONG = "#2e9e4f"
+COLOR_LOSS_STRONG = "#d94a4a"
+def blend(light_hex, strong_hex, t):
+    """Blend between two hex colors. t=0 gives light, t=1 gives strong."""
+    t = max(0.0, min(1.0, t))
+    l = [int(light_hex[i:i+2], 16) for i in (1, 3, 5)]
+    s = [int(strong_hex[i:i+2], 16) for i in (1, 3, 5)]
+    r, g, b = (round(l[i] + (s[i] - l[i]) * t) for i in range(3))
+    return f"#{r:02x}{g:02x}{b:02x}"
 class PnLCalendar:      
     def __init__(self, root):
         self.root = root
@@ -90,7 +97,9 @@ class PnLCalendar:
                      font=("Arial", 10, "bold")).grid(row=0, column=col, padx=2, pady=2)
 
         days = calendar.monthcalendar(self.cur_year, self.cur_month) 
-
+        prefix = f"{self.cur_year}-{self.cur_month:02d}"
+        month_vals = [v for k, v in self.data.items() if k.startswith(prefix)]
+        max_abs = max((abs(v) for v in month_vals), default=1) or 1
         for row, week in enumerate(days, start=1):
             for col, day in enumerate(week):       # Loop through each week and day in the month creating a label for each day with the corresponding P&L value and color coding based on win/loss/empty
                 if day == 0:
@@ -102,8 +111,15 @@ class PnLCalendar:
                     bg = COLOR_EMPTY
                     text = str(day)
                 else:
-                    bg = COLOR_WIN if value > 0 else (COLOR_LOSS if value < 0 else COLOR_EMPTY)     # Set the background color based on whether the P&L value is positive, negative, or zero
+                    intensity = abs(value) / max_abs
+                    if value > 0:
+                        bg = blend(COLOR_WIN, COLOR_WIN_STRONG, intensity)
+                    elif value < 0:
+                        bg = blend(COLOR_LOSS, COLOR_LOSS_STRONG, intensity)
+                    else:
+                        bg = COLOR_EMPTY
                     text = f"{day}\n{value:+.0f}"
+                    
                 is_today = (self.cur_year == self.today.year and         #Highlight the current day
                             self.cur_month == self.today.month and
                             day == self.today.day)
