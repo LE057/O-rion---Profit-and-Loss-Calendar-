@@ -36,6 +36,7 @@ class PnLCalendar:
 
         self.grid_frame = tk.Frame(root)        # Build the calendar grid frame
         self.grid_frame.pack(padx=10, pady=10)
+        calendar.setfirstweekday(calendar.SUNDAY)
 
         self.stats_lbl = tk.Label(root, text="", font=("Arial", 11))    # Build the statistics label to display win rate and average P&L for the current month
         self.stats_lbl.pack(pady=(0, 10))
@@ -82,10 +83,16 @@ class PnLCalendar:
         for widget in self.grid_frame.winfo_children():
             widget.destroy()
 
+         # Weekday headers (row 0)
+        weekdays = ["Sun","Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        for col, name in enumerate(weekdays):
+            tk.Label(self.grid_frame, text=name, width=8,
+                     font=("Arial", 10, "bold")).grid(row=0, column=col, padx=2, pady=2)
+
         days = calendar.monthcalendar(self.cur_year, self.cur_month) 
 
-        for week in days:       # Loop through each week and day in the month creating a label for each day with the corresponding P&L value and color coding based on win/loss/empty
-            for day in week:
+        for row, week in enumerate(days, start=1):
+            for col, day in enumerate(week):       # Loop through each week and day in the month creating a label for each day with the corresponding P&L value and color coding based on win/loss/empty
                 if day == 0:
                     continue
                 key = self.key_for(self.cur_year, self.cur_month, day)  
@@ -97,14 +104,17 @@ class PnLCalendar:
                 else:
                     bg = COLOR_WIN if value > 0 else (COLOR_LOSS if value < 0 else COLOR_EMPTY)     # Set the background color based on whether the P&L value is positive, negative, or zero
                     text = f"{day}\n{value:+.0f}"
-
-                btn = tk.Label(self.grid_frame, text=text, width=8, height=3,      # Label for each day with the corresponding P&L value and color coding based on win/loss/empty
-                               bg=bg, relief="solid", borderwidth=1)
-                row = days.index(week) + 1
-                col = week.index(day)
+                is_today = (self.cur_year == self.today.year and         #Highlight the current day
+                            self.cur_month == self.today.month and
+                            day == self.today.day)
+                
+                btn = tk.Label(self.grid_frame, text=text, width=8, height=3,
+                               bg=bg, relief="solid",
+                               borderwidth=3 if is_today else 1,
+                               highlightthickness=2 if is_today else 0,
+                               highlightbackground="#1a73e8")
                 btn.grid(row=row, column=col, padx=2, pady=2)
                 btn.bind("<Button-1>", lambda e, d=day: self.edit_day(d))
-
         self.update_stats()     # Update the statistics label with the win rate and average P&L for the current month
 
     def edit_day(self, day):    # Open a text box to edit the value for the selected day and update the data
