@@ -40,9 +40,16 @@ class PnLCalendar:
         self.title_lbl = tk.Label(self.header, text=self.month_title(), font=("Arial", 14, "bold"))
         self.title_lbl.pack(side="left", padx=10)
         tk.Button(self.header, text=">", command=self.next_month).pack(side="left", padx=10)
+        tk.Button(self.header, text="Clear Month", command=self.clear_month).pack(side="right", padx=10)
 
         self.grid_frame = tk.Frame(root)        # Build the calendar grid frame
-        self.grid_frame.pack(padx=10, pady=10)
+        self.grid_frame.pack(padx=10, pady=10, fill="both", expand=True) # Configure the grid frame to expand and fill the available space
+
+        for col in range(7):
+            self.grid_frame.grid_columnconfigure(col, weight=1) 
+        for row in range(1, 7):
+            self.grid_frame.grid_rowconfigure(row, weight=1)
+            
         calendar.setfirstweekday(calendar.SUNDAY)
 
         self.stats_lbl = tk.Label(root, text="", font=("Arial", 11))    # Build the statistics label to display win rate and average P&L for the current month
@@ -162,10 +169,25 @@ class PnLCalendar:
         wins = len([v for v in month_vals if v > 0])    # Count the number of winning trades for the current month
         win_rate = wins / len(month_vals) * 100         # Calculate the win rate as a percentage of winning trades to total trades for the current month
         avg = sum(month_vals) / len(month_vals)         # Calculate the average P&L for the current month by summing all P&L values and dividing by the total number of trades
+        total = sum(month_vals) # Calculate the total P&L for the current month by summing all P&L values
 
-        self.stats_lbl.config(text=f"Win rate: {win_rate:.1f}%   Avg: {avg:+.2f}")  # Update the statistics label with the calculated win rate and average P&L for the current month
+        self.stats_lbl.config(text=f"Win rate: {win_rate:.1f}%   Avg: {avg:+.2f}   Total: {total:+.2f}")  # Update the statistics label with the calculated win rate and average P&L for the current month
 
-
+    def clear_month(self):
+        prefix = f"{self.cur_year}-{self.cur_month:02d}"
+        keys_to_delete = [k for k in self.data if k.startswith(prefix)]
+        if not keys_to_delete:
+            messagebox.showinfo("Info", "No trades to clear for this month.")
+            return
+        confirm = messagebox.askyesno("Confirm", f"Are you sure you want to clear all trades for {self.month_title()}?")
+        if confirm:
+            for k in keys_to_delete:
+                del self.data[k]
+            self.save_data()
+            self.render_calendar()
+       
+        
+        
 if __name__ == "__main__":  # Run the P&L Calendar application
     root = tk.Tk()
     app = PnLCalendar(root)
