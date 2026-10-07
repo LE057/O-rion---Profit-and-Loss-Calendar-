@@ -1,20 +1,48 @@
-# P&L Calendar
-# tkinter GUI for tracking daily profit and loss
 import tkinter as tk
 from tkinter import simpledialog, messagebox
 from datetime import date
 import calendar
 import json
 import os
+import darkdetect
 
 DATA_FILE = "pnl_data.json" # Store P&L data in a JSON file
 
 # Add gradient colors for win/loss/empty
-COLOR_WIN = "#8fd19e"
-COLOR_LOSS = "#f2a6a6"
-COLOR_EMPTY = "#e6e6e6"
-COLOR_WIN_STRONG = "#2e9e4f"
-COLOR_LOSS_STRONG = "#d94a4a"
+# if darkdetect.isDark(): # This adjust the buttons to adapt if the operating system is in dark mode or light mode 
+#     COLOR_WIN = "#3d7a4a"
+#     COLOR_LOSS = "#7a3d3d"
+#     COLOR_EMPTY = "#333333"
+#     COLOR_WIN_STRONG = "#4caf50"
+#     COLOR_LOSS_STRONG = "#f44336"
+#     COLOR_TEXT = "#ffffff"
+# else:
+#     COLOR_WIN = "#8fd19e"
+#     COLOR_LOSS = "#f2a6a6"
+#     COLOR_EMPTY = "#e6e6e6"
+#     COLOR_WIN_STRONG = "#2e9e4f"
+#     COLOR_LOSS_STRONG = "#d94a4a"
+#     COLOR_TEXT = "#000000"
+def update_colors():
+    global COLOR_WIN, COLOR_LOSS, COLOR_EMPTY
+    global COLOR_WIN_STRONG, COLOR_LOSS_STRONG, COLOR_TEXT
+
+    if darkdetect.isDark(): #This adjust the buttons to adapt if the operating system is in dark mode or light mode 
+        COLOR_WIN = "#3d7a4a"
+        COLOR_LOSS = "#7a3d3d"
+        COLOR_EMPTY = "#333333"
+        COLOR_WIN_STRONG = "#4caf50"
+        COLOR_LOSS_STRONG = "#f44336"
+        COLOR_TEXT = "#ffffff"
+    else:
+        COLOR_WIN = "#8fd19e"
+        COLOR_LOSS = "#f2a6a6"
+        COLOR_EMPTY = "#e6e6e6"
+        COLOR_WIN_STRONG = "#2e9e4f"
+        COLOR_LOSS_STRONG = "#d94a4a"
+        COLOR_TEXT = "#000000"
+update_colors()  # Initialize colors based on the current theme
+
 def blend(light_hex, strong_hex, t):
     """Blend between two hex colors. t=0 gives light, t=1 gives strong."""
     t = max(0.0, min(1.0, t))
@@ -56,6 +84,9 @@ class PnLCalendar:
         self.stats_lbl.pack(pady=(0, 10))
 
         self.render_calendar() # Render the calendar for the current month
+        # This will update the theme in real time if you change between dark/light mode when the program i running.
+        self.dark_mode = darkdetect.isDark()
+        self.root.after(1000, self.check_theme)
 
     def load_data(self):        # Load P&L data from JSON file if it exists
         if os.path.exists(DATA_FILE):
@@ -133,10 +164,11 @@ class PnLCalendar:
                 
                 btn = tk.Label(self.grid_frame, text=text, width=8, height=3,
                                bg=bg, relief="solid",
+                               fg=COLOR_TEXT,
                                borderwidth=3 if is_today else 1,
                                highlightthickness=2 if is_today else 0,
                                highlightbackground="#1a73e8")
-                btn.grid(row=row, column=col, padx=2, pady=2)
+                btn.grid(row=row, column=col, padx=3, pady=3)
                 btn.bind("<Button-1>", lambda e, d=day: self.edit_day(d))
         self.update_stats()     # Update the statistics label with the win rate and average P&L for the current month
 
@@ -185,6 +217,15 @@ class PnLCalendar:
                 del self.data[k]
             self.save_data()
             self.render_calendar()
+    def check_theme(self):
+        current_mode = darkdetect.isDark()
+
+        if current_mode != self.dark_mode:
+            self.dark_mode = current_mode
+            update_colors()
+            self.render_calendar()
+
+        self.root.after(1000, self.check_theme)
        
         
         
