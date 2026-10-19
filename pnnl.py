@@ -50,6 +50,15 @@ def blend(light_hex, strong_hex, t):
     s = [int(strong_hex[i:i+2], 16) for i in (1, 3, 5)]
     r, g, b = (round(l[i] + (s[i] - l[i]) * t) for i in range(3))
     return f"#{r:02x}{g:02x}{b:02x}"
+
+def fmt_money(value, decimals=0):
+    """Format a number as +$1,250 or -$1,250."""
+    rounded = round(abs(value), decimals)
+    if rounded == 0:
+        return f"${0:,.{decimals}f}"
+    sign = "+" if value > 0 else "-"
+    return f"{sign}${rounded:,.{decimals}f}"
+
 class PnLCalendar:      
     def __init__(self, root):
         self.root = root
@@ -165,7 +174,7 @@ class PnLCalendar:
                         bg = blend(COLOR_LOSS, COLOR_LOSS_STRONG, intensity)
                     else:
                         bg = COLOR_EMPTY
-                    text = f"{day}\n{value:+.0f}"
+                    text = f"{day}\n{fmt_money(value)}"
                     
                 is_today = (self.cur_year == self.today.year and         #Highlight the current day
                             self.cur_month == self.today.month and
@@ -185,6 +194,8 @@ class PnLCalendar:
     def edit_day(self, day):    # Open a text box to edit the value for the selected day and update the data
         key = self.key_for(self.cur_year, self.cur_month, day)
         current = self.data.get(key, "")
+        if current != "":
+            current = f"{current:g}"
         val = simpledialog.askstring("Enter P&L", f"P&L for {self.cur_month}/{day}/{self.cur_year}:",initialvalue=str(current))
         if val is None:
             return
@@ -213,7 +224,7 @@ class PnLCalendar:
         avg = sum(month_vals) / len(month_vals)         # Calculate the average P&L for the current month by summing all P&L values and dividing by the total number of trades
         total = sum(month_vals) # Calculate the total P&L for the current month by summing all P&L values
 
-        self.stats_lbl.config(text=f"Win rate: {win_rate:.1f}%   Avg: {avg:+.2f}   Total: {total:+.2f}")  # Update the statistics label with the calculated win rate and average P&L for the current month
+        self.stats_lbl.config(text=f"Win rate: {win_rate:.1f}%   Avg: {fmt_money(avg, 2)}   Total: {fmt_money(total, 2)}")  # Update the statistics label with the calculated win rate and average P&L for the current month
 
     def clear_month(self):
         prefix = f"{self.cur_year}-{self.cur_month:02d}"
