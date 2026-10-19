@@ -54,7 +54,8 @@ class PnLCalendar:
     def __init__(self, root):
         self.root = root
         self.root.title("P&L Calendar")
-
+        self.root.geometry("800x600")
+        self.root.minsize(600, 450)
         self.today = date.today()           # Get today's date
         self.cur_year = self.today.year     # Current year and month viewed
         self.cur_month = self.today.month
@@ -74,20 +75,20 @@ class PnLCalendar:
         self.grid_frame.pack(padx=10, pady=10, fill="both", expand=True) # Configure the grid frame to expand and fill the available space
 
         for col in range(7):
-            self.grid_frame.grid_columnconfigure(col, weight=1) 
+            self.grid_frame.grid_columnconfigure(col, weight=1, uniform = "day") 
         for row in range(1, 7):
-            self.grid_frame.grid_rowconfigure(row, weight=1)
+            self.grid_frame.grid_rowconfigure(row, weight=1, uniform = "week")
             
         calendar.setfirstweekday(calendar.SUNDAY)
 
         self.stats_lbl = tk.Label(root, text="", font=("Arial", 11))    # Build the statistics label to display win rate and average P&L for the current month
         self.stats_lbl.pack(pady=(0, 10))
-
+        self.day_font = ("Arial", 10)
         self.render_calendar() # Render the calendar for the current month
         # This will update the theme in real time if you change between dark/light mode when the program i running.
         self.dark_mode = darkdetect.isDark()
         self.root.after(1000, self.check_theme)
-
+        self.grid_frame.bind("<Configure>", self.on_resize)
     def load_data(self):        # Load P&L data from JSON file if it exists
         if os.path.exists(DATA_FILE):
             try:
@@ -123,6 +124,14 @@ class PnLCalendar:
     def refresh(self):  # Refresh the calendar display and update the title label
         self.title_lbl.config(text=self.month_title())
         self.render_calendar()
+
+    def on_resize(self, event): # Adjust the font size of the day labels based on the height of the grid frame
+        cell_h = event.height // 7
+        size = max(9, min(22, cell_h // 4))
+        self.day_font = ("Arial", size)
+        for w in self.grid_frame.winfo_children():
+            if isinstance(w, tk.Label) and w.grid_info().get("row", 0) != 0:
+                w.config(font=self.day_font)
 
     def render_calendar(self):  # Render the calendar grid for the current month displaying P&L values 
         for widget in self.grid_frame.winfo_children():
@@ -162,13 +171,14 @@ class PnLCalendar:
                             self.cur_month == self.today.month and
                             day == self.today.day)
                 
-                btn = tk.Label(self.grid_frame, text=text, width=8, height=3,
+                btn = tk.Label(self.grid_frame, text=text,
                                bg=bg, relief="solid",
                                fg=COLOR_TEXT,
+                               font = self.day_font,
                                borderwidth=3 if is_today else 1,
                                highlightthickness=2 if is_today else 0,
                                highlightbackground="#1a73e8")
-                btn.grid(row=row, column=col, padx=3, pady=3)
+                btn.grid(row=row, column=col, padx=3, pady=3, sticky = "nsew")
                 btn.bind("<Button-1>", lambda e, d=day: self.edit_day(d))
         self.update_stats()     # Update the statistics label with the win rate and average P&L for the current month
 
