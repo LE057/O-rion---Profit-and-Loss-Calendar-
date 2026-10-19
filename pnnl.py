@@ -26,7 +26,7 @@ DATA_FILE = "pnl_data.json" # Store P&L data in a JSON file
 def update_colors():
     global COLOR_WIN, COLOR_LOSS, COLOR_EMPTY
     global COLOR_WIN_STRONG, COLOR_LOSS_STRONG, COLOR_TEXT
-
+    global COLOR_HEADER, COLOR_GRID, COLOR_OUTSIDE, COLOR_DIM
     if darkdetect.isDark(): #This adjust the buttons to adapt if the operating system is in dark mode or light mode 
         COLOR_WIN = "#3d7a4a"
         COLOR_LOSS = "#7a3d3d"
@@ -34,6 +34,10 @@ def update_colors():
         COLOR_WIN_STRONG = "#4caf50"
         COLOR_LOSS_STRONG = "#f44336"
         COLOR_TEXT = "#ffffff"
+        COLOR_HEADER = "#2a2a2a"
+        COLOR_GRID = "#555555"
+        COLOR_OUTSIDE = "#222222"
+        COLOR_DIM = "#777777"
     else:
         COLOR_WIN = "#8fd19e"
         COLOR_LOSS = "#f2a6a6"
@@ -41,6 +45,10 @@ def update_colors():
         COLOR_WIN_STRONG = "#2e9e4f"
         COLOR_LOSS_STRONG = "#d94a4a"
         COLOR_TEXT = "#000000"
+        COLOR_HEADER = "#d9d9d9"
+        COLOR_GRID = "#b0b0b0"
+        COLOR_OUTSIDE = "#f4f4f4"
+        COLOR_DIM = "#a0a0a0"
 update_colors()  # Initialize colors based on the current theme
 
 def blend(light_hex, strong_hex, t):
@@ -85,9 +93,7 @@ class PnLCalendar:
 
         for col in range(7):
             self.grid_frame.grid_columnconfigure(col, weight=1, uniform = "day") 
-        for row in range(1, 7):
-            self.grid_frame.grid_rowconfigure(row, weight=1, uniform = "week")
-            
+        
         calendar.setfirstweekday(calendar.SUNDAY)
 
         self.stats_lbl = tk.Label(root, text="", font=("Arial", 11))    # Build the statistics label to display win rate and average P&L for the current month
@@ -134,62 +140,82 @@ class PnLCalendar:
         self.title_lbl.config(text=self.month_title())
         self.render_calendar()
 
-    def on_resize(self, event): # Adjust the font size of the day labels based on the height of the grid frame
+    def on_resize(self, event):
         cell_h = event.height // 7
         size = max(9, min(22, cell_h // 4))
         self.day_font = ("Arial", size)
-        for w in self.grid_frame.winfo_children():
-            if isinstance(w, tk.Label) and w.grid_info().get("row", 0) != 0:
-                w.config(font=self.day_font)
+        for lbl in self.pnl_labels:
+            lbl.config(font=self.day_font)
+        for lbl in self.day_labels:
+            lbl.config(font=("Arial", max(8, size - 3), "bold"))
 
     def render_calendar(self):  # Render the calendar grid for the current month displaying P&L values 
         for widget in self.grid_frame.winfo_children():
             widget.destroy()
+        self.day_labels = []
+        self.pnl_labels = []
+        self.grid_frame.config(bg=COLOR_GRID)   # shows through as grid lines
 
-         # Weekday headers (row 0)
-        weekdays = ["Sun","Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        # Weekday header bar
+        weekdays = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
         for col, name in enumerate(weekdays):
-            tk.Label(self.grid_frame, text=name, width=8,
-                     font=("Arial", 10, "bold")).grid(row=0, column=col, padx=2, pady=2)
+            tk.Label(self.grid_frame, text=name, font=("Arial", 10, "bold"),
+                     bg=COLOR_HEADER, fg=COLOR_TEXT, pady=6
+                     ).grid(row=0, column=col, sticky="nsew", padx=1, pady=1)
 
-        days = calendar.monthcalendar(self.cur_year, self.cur_month) 
+        # Includes days from the previous/next month to fill out the weeks
+        weeks = calendar.Calendar(firstweekday=6).monthdatescalendar(
+            self.cur_year, self.cur_month)
+
         prefix = f"{self.cur_year}-{self.cur_month:02d}"
         month_vals = [v for k, v in self.data.items() if k.startswith(prefix)]
         max_abs = max((abs(v) for v in month_vals), default=1) or 1
-        for row, week in enumerate(days, start=1):
-            for col, day in enumerate(week):       # Loop through each week and day in the month creating a label for each day with the corresponding P&L value and color coding based on win/loss/empty
-                if day == 0:
-                    continue
-                key = self.key_for(self.cur_year, self.cur_month, day)  
-                value = self.data.get(key)
 
-                if value is None:   # If no value is recorded for the day set the background color to empty and display only the day number
+        # Only the rows actually used should expand
+        for r in range(1, 7):
+            self.grid_frame.grid_rowconfigure(
+                r, weight=1 if r <= len(weeks) else 0, uniform="week")
+
+        for row, week in enumerate(weeks, start=1):
+            for col, d in enumerate(week):
+                in_month = (d.month == self.cur_month)
+                value = self.data.get(self.key_for(d.year, d.month, d.day)) if in_month else None
+
+                if not in_month:
+                    bg = COLOR_OUTSIDE
+                elif value is None or value == 0:
                     bg = COLOR_EMPTY
-                    text = str(day)
+                elif value > 0:
+                    bg = blend(COLOR_WIN, COLOR_WIN_STRONG, abs(value) / max_abs)
                 else:
-                    intensity = abs(value) / max_abs
-                    if value > 0:
-                        bg = blend(COLOR_WIN, COLOR_WIN_STRONG, intensity)
-                    elif value < 0:
-                        bg = blend(COLOR_LOSS, COLOR_LOSS_STRONG, intensity)
-                    else:
-                        bg = COLOR_EMPTY
-                    text = f"{day}\n{fmt_money(value)}"
-                    
-                is_today = (self.cur_year == self.today.year and         #Highlight the current day
-                            self.cur_month == self.today.month and
-                            day == self.today.day)
-                
-                btn = tk.Label(self.grid_frame, text=text,
-                               bg=bg, relief="solid",
-                               fg=COLOR_TEXT,
-                               font = self.day_font,
-                               borderwidth=3 if is_today else 1,
-                               highlightthickness=2 if is_today else 0,
-                               highlightbackground="#1a73e8")
-                btn.grid(row=row, column=col, padx=3, pady=3, sticky = "nsew")
-                btn.bind("<Button-1>", lambda e, d=day: self.edit_day(d))
-        self.update_stats()     # Update the statistics label with the win rate and average P&L for the current month
+                    bg = blend(COLOR_LOSS, COLOR_LOSS_STRONG, abs(value) / max_abs)
+
+                fg = COLOR_TEXT if in_month else COLOR_DIM
+                is_today = (d == self.today)
+
+                cell = tk.Frame(self.grid_frame, bg=bg)
+                cell.grid(row=row, column=col, sticky="nsew", padx=1, pady=1)
+
+                # Day number, top-left (blue badge for today)
+                day_lbl = tk.Label(cell, text=str(d.day), bg=bg, fg=fg,
+                                   font=("Arial", 9, "bold"), anchor="nw")
+                if is_today:
+                    day_lbl.config(bg="#1a73e8", fg="#ffffff", padx=5)
+                day_lbl.pack(anchor="nw", padx=5, pady=(4, 0))
+                self.day_labels.append(day_lbl)
+
+                # P&L value, centered in the remaining space
+                pnl_text = fmt_money(value) if value is not None else ""
+                pnl_lbl = tk.Label(cell, text=pnl_text, bg=bg, fg=fg,
+                                   font=self.day_font)
+                pnl_lbl.pack(expand=True)
+                self.pnl_labels.append(pnl_lbl)
+
+                if in_month:
+                    for w in (cell, day_lbl, pnl_lbl):
+                        w.bind("<Button-1>", lambda e, dd=d.day: self.edit_day(dd))
+
+        self.update_stats()   
 
     def edit_day(self, day):    # Open a text box to edit the value for the selected day and update the data
         key = self.key_for(self.cur_year, self.cur_month, day)
