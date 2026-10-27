@@ -71,7 +71,7 @@ class PnLCalendar:
     def __init__(self, root):
         self.root = root
         self.root.title("P&L Calendar")
-        self.root.geometry("800x600")
+        self.root.geometry("900x650")
         self.root.minsize(600, 450)
         self.today = date.today()           # Get today's date
         self.cur_year = self.today.year     # Current year and month viewed
@@ -91,7 +91,7 @@ class PnLCalendar:
         self.grid_frame = tk.Frame(root)        # Build the calendar grid frame
         self.grid_frame.pack(padx=10, pady=10, fill="both", expand=True) # Configure the grid frame to expand and fill the available space
 
-        for col in range(7):
+        for col in range(8):
             self.grid_frame.grid_columnconfigure(col, weight=1, uniform = "day") 
         
         calendar.setfirstweekday(calendar.SUNDAY)
@@ -157,7 +157,7 @@ class PnLCalendar:
         self.grid_frame.config(bg=COLOR_GRID)   # shows through as grid lines
 
         # Weekday header bar
-        weekdays = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
+        weekdays = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT", "WEEK"]
         for col, name in enumerate(weekdays):
             tk.Label(self.grid_frame, text=name, font=("Arial", 10, "bold"),
                      bg=COLOR_HEADER, fg=COLOR_TEXT, pady=6
@@ -170,6 +170,15 @@ class PnLCalendar:
         prefix = f"{self.cur_year}-{self.cur_month:02d}"
         month_vals = [v for k, v in self.data.items() if k.startswith(prefix)]
         max_abs = max((abs(v) for v in month_vals), default=1) or 1
+        
+        # Weekly totals (only counts days inside the viewed month)
+        week_totals = []
+        for week in weeks:
+            vals = [self.data.get(self.key_for(d.year, d.month, d.day))
+                for d in week if d.month == self.cur_month]
+            vals = [v for v in vals if v is not None]
+            week_totals.append(sum(vals) if vals else None)
+        max_week_abs = max((abs(t) for t in week_totals if t is not None), default=1) or 1
 
         # Only the rows actually used should expand
         for r in range(1, 7):
@@ -214,6 +223,27 @@ class PnLCalendar:
                 if in_month:
                     for w in (cell, day_lbl, pnl_lbl):
                         w.bind("<Button-1>", lambda e, dd=d.day: self.edit_day(dd))
+                        
+            total = week_totals[row - 1]
+            if total is None or total == 0:
+                wbg = COLOR_EMPTY
+            elif total > 0:
+                wbg = blend(COLOR_WIN, COLOR_WIN_STRONG, abs(total) / max_week_abs)
+            else:
+                wbg = blend(COLOR_LOSS, COLOR_LOSS_STRONG, abs(total) / max_week_abs)
+
+            wcell = tk.Frame(self.grid_frame, bg=wbg)
+            wcell.grid(row=row, column=7, sticky="nsew", padx=1, pady=1)
+
+            wk_lbl = tk.Label(wcell, text=f"Wk {row}", bg=wbg, fg=COLOR_DIM,
+                              font=("Arial", 9, "bold"), anchor="nw")
+            wk_lbl.pack(anchor="nw", padx=5, pady=(4, 0))
+            self.day_labels.append(wk_lbl)
+
+            wtotal_lbl = tk.Label(wcell, text=fmt_money(total) if total is not None else "",
+                                  bg=wbg, fg=COLOR_TEXT, font=self.day_font)
+            wtotal_lbl.pack(expand=True)
+            self.pnl_labels.append(wtotal_lbl)
 
         self.update_stats()   
 
