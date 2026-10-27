@@ -1,12 +1,13 @@
 import tkinter as tk
 from tkinter import simpledialog, messagebox
-from datetime import date
+from datetime import date, datetime
 import calendar
 import json
 import os
 import darkdetect
+import shutil
 
-DATA_FILE = "pnl_data.json" # Store P&L data in a JSON file
+DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pnl_data.json") # Store P&L data in a JSON file
 
 # Add gradient colors for win/loss/empty
 # if darkdetect.isDark(): # This adjust the buttons to adapt if the operating system is in dark mode or light mode 
@@ -108,16 +109,29 @@ class PnLCalendar:
         self.root.after(1000, self.check_theme)
         self.grid_frame.bind("<Configure>", self.on_resize)
     def load_data(self):        # Load P&L data from JSON file if it exists
-        if os.path.exists(DATA_FILE):
-            try:
-                with open(DATA_FILE, "r") as f:
-                    self.data = json.load(f)
-            except Exception:
-                self.data = {}
+        if not os.path.exists(DATA_FILE):
+            return
+        try:
+            with open(DATA_FILE, "r") as f:
+                loaded = json.load(f)
+            if not isinstance(loaded, dict):
+                raise ValueError("Data file is not a dictionary")
+            self.data = loaded
+        except Exception:
+            # Keep a copy of the bad file so nothing is lost
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            backup = f"{DATA_FILE}.{stamp}.bak"
+            shutil.copy2(DATA_FILE, backup)
+            self.data = {}
+            messagebox.showwarning(
+                "Data file problem",
+                f"Couldn't read your saved data. A copy of the file was saved as:\n{backup}")
 
-    def save_data(self):    # Save P&L data to JSON file
-        with open(DATA_FILE, "w") as f:
+    def save_data(self):    # Save P&L data to JSON file safely
+        tmp = DATA_FILE + ".tmp"
+        with open(tmp, "w") as f:
             json.dump(self.data, f, indent=2)
+        os.replace(tmp, DATA_FILE)
 
     def key_for(self, year, month, day):    # Generate a key for storing P&L data in the format: YYYY-MM-DD
         return f"{year}-{month:02d}-{day:02d}"
