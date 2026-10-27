@@ -76,6 +76,8 @@ class PnLCalendar:
         self.today = date.today()           # Get today's date
         self.cur_year = self.today.year     # Current year and month viewed
         self.cur_month = self.today.month
+        self.root.bind("<Left>", lambda e: self.prev_month())
+        self.root.bind("<Right>", lambda e: self.next_month())
 
         self.data = {}
         self.load_data()    # Load existing P&L data from JSON file
