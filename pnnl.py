@@ -87,6 +87,7 @@ class PnLCalendar:
         self.title_lbl.pack(side="left", padx=10)
         tk.Button(self.header, text=">", command=self.next_month).pack(side="left", padx=10)
         tk.Button(self.header, text="Clear Month", command=self.clear_month).pack(side="right", padx=10)
+        tk.Button(self.header, text="Today" , command=self.go_today).pack(side="left", padx=10)
 
         self.grid_frame = tk.Frame(root)        # Build the calendar grid frame
         self.grid_frame.pack(padx=10, pady=10, fill="both", expand=True) # Configure the grid frame to expand and fill the available space
@@ -127,6 +128,11 @@ class PnLCalendar:
         if self.cur_month == 0:
             self.cur_month = 12
             self.cur_year -= 1
+        self.refresh()
+        
+    def go_today(self):
+        self.cur_year = self.today.year
+        self.cur_month = self.today.month
         self.refresh()
 
     def next_month(self):   # Navigate to the next month and refresh the calendar
