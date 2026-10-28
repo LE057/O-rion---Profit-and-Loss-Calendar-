@@ -5,6 +5,8 @@
 This is a desktop app coded in Python using the Tkinter library that helps traders track their daily profit and loss on a calendar.
 
 - Calendar desktop app
+- Use the month and year title to jump directly to any month
+- Navigate one month at a time with the arrow buttons or Left/Right keys
 - Click on any date to enter the days profit or loss (positive or negative)
 - Add a ticker, comma-separated tags, and a note to each date; dates with details show an asterisk
 - Open the ticker's TradingView chart from the date editor

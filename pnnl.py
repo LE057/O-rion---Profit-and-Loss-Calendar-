@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 from datetime import date, datetime
 import calendar
 import json
@@ -91,8 +91,14 @@ class PnLCalendar:
         self.header = tk.Frame(root)    # Build the header with month navigation buttons
         self.header.pack(fill="x", pady=8)     
         tk.Button(self.header, text="<", command=self.prev_month).pack(side="left", padx=10)
-        self.title_lbl = tk.Label(self.header, text=self.month_title(), font=("Arial", 14, "bold"))
-        self.title_lbl.pack(side="left", padx=10)
+        self.title_btn = tk.Button(
+            self.header,
+            text=self.month_title(),
+            font=("Arial", 14, "bold"),
+            command=self.open_month_picker,
+            relief="flat",
+        )
+        self.title_btn.pack(side="left", padx=10)
         tk.Button(self.header, text=">", command=self.next_month).pack(side="left", padx=10)
         tk.Button(self.header, text="Clear Month", command=self.clear_month).pack(side="right", padx=10)
         tk.Button(self.header, text="Today" , command=self.go_today).pack(side="left", padx=10)
@@ -166,6 +172,53 @@ class PnLCalendar:
         self.cur_month = self.today.month
         self.refresh()
 
+    def open_month_picker(self):
+        window = tk.Toplevel(self.root)
+        window.title("Go to month")
+        window.transient(self.root)
+        window.grab_set()
+
+        form = tk.Frame(window, padx=12, pady=12)
+        form.pack(fill="both", expand=True)
+
+        tk.Label(form, text="Month").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=4)
+        month_picker = ttk.Combobox(
+            form,
+            values=calendar.month_name[1:],
+            state="readonly",
+            width=12,
+        )
+        month_picker.current(self.cur_month - 1)
+        month_picker.grid(row=0, column=1, sticky="ew", pady=4)
+
+        tk.Label(form, text="Year").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=4)
+        year_picker = tk.Spinbox(form, from_=1, to=9999, width=8)
+        year_picker.delete(0, "end")
+        year_picker.insert(0, str(self.cur_year))
+        year_picker.grid(row=1, column=1, sticky="w", pady=4)
+
+        def go_to_month():
+            try:
+                year = int(year_picker.get())
+                if not 1 <= year <= 9999:
+                    raise ValueError
+            except ValueError:
+                messagebox.showerror("Invalid year", "Enter a year from 1 to 9999.", parent=window)
+                return
+
+            self.cur_year = year
+            self.cur_month = month_picker.current() + 1
+            self.refresh()
+            window.destroy()
+
+        buttons = tk.Frame(form)
+        buttons.grid(row=2, column=0, columnspan=2, sticky="e", pady=(8, 0))
+        tk.Button(buttons, text="Cancel", command=window.destroy).pack(side="right", padx=(6, 0))
+        tk.Button(buttons, text="Go", command=go_to_month).pack(side="right")
+        window.bind("<Return>", lambda _event: go_to_month())
+        window.bind("<Escape>", lambda _event: window.destroy())
+        year_picker.focus_set()
+
     def next_month(self):   # Navigate to the next month and refresh the calendar
         self.cur_month += 1
         if self.cur_month == 13:
@@ -174,7 +227,7 @@ class PnLCalendar:
         self.refresh()
 
     def refresh(self):  # Refresh the calendar display and update the title label
-        self.title_lbl.config(text=self.month_title())
+        self.title_btn.config(text=self.month_title())
         self.render_calendar()
 
     def on_resize(self, event):
