@@ -1,12 +1,17 @@
 import tkinter as tk
-from tkinter import simpledialog, messagebox
-from datetime import date
+from tkinter import messagebox
+from datetime import date, datetime
 import calendar
 import json
 import os
+from urllib.parse import quote
+import webbrowser
 import darkdetect
+import shutil
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-DATA_FILE = "pnl_data.json" # Store P&L data in a JSON file
+DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pnl_data.json") # Store P&L data in a JSON file
 
 # Add gradient colors for win/loss/empty
 # if darkdetect.isDark(): # This adjust the buttons to adapt if the operating system is in dark mode or light mode 
@@ -71,13 +76,16 @@ class PnLCalendar:
     def __init__(self, root):
         self.root = root
         self.root.title("P&L Calendar")
-        self.root.geometry("800x600")
+        self.root.geometry("900x650")
         self.root.minsize(600, 450)
         self.today = date.today()           # Get today's date
         self.cur_year = self.today.year     # Current year and month viewed
         self.cur_month = self.today.month
+        self.root.bind("<Left>", lambda e: self.prev_month())
+        self.root.bind("<Right>", lambda e: self.next_month())
 
         self.data = {}
+        self.day_details = {}
         self.load_data()    # Load existing P&L data from JSON file
 
         self.header = tk.Frame(root)    # Build the header with month navigation buttons
@@ -87,11 +95,12 @@ class PnLCalendar:
         self.title_lbl.pack(side="left", padx=10)
         tk.Button(self.header, text=">", command=self.next_month).pack(side="left", padx=10)
         tk.Button(self.header, text="Clear Month", command=self.clear_month).pack(side="right", padx=10)
+        tk.Button(self.header, text="Today" , command=self.go_today).pack(side="left", padx=10)
 
         self.grid_frame = tk.Frame(root)        # Build the calendar grid frame
         self.grid_frame.pack(padx=10, pady=10, fill="both", expand=True) # Configure the grid frame to expand and fill the available space
 
-        for col in range(7):
+        for col in range(8):
             self.grid_frame.grid_columnconfigure(col, weight=1, uniform = "day") 
         
         calendar.setfirstweekday(calendar.SUNDAY)
@@ -105,16 +114,39 @@ class PnLCalendar:
         self.root.after(1000, self.check_theme)
         self.grid_frame.bind("<Configure>", self.on_resize)
     def load_data(self):        # Load P&L data from JSON file if it exists
-        if os.path.exists(DATA_FILE):
-            try:
-                with open(DATA_FILE, "r") as f:
-                    self.data = json.load(f)
-            except Exception:
-                self.data = {}
+        if not os.path.exists(DATA_FILE):
+            return
+        try:
+            with open(DATA_FILE, "r") as f:
+                loaded = json.load(f)
+            if not isinstance(loaded, dict):
+                raise ValueError("Data file is not a dictionary")
+            day_details = loaded.pop("_day_details", {})
+            if not isinstance(day_details, dict):
+                raise ValueError("Day details are not a dictionary")
+            for details in day_details.values():
+                if (not isinstance(details, dict)
+                        or not isinstance(details.get("notes", ""), str)
+                        or not isinstance(details.get("tags", ""), str)
+                        or not isinstance(details.get("ticker", ""), str)):
+                    raise ValueError("Day details have an invalid format")
+            self.data = loaded
+            self.day_details = day_details
+        except Exception:
+            # Keep a copy of the bad file so nothing is lost
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            backup = f"{DATA_FILE}.{stamp}.bak"
+            shutil.copy2(DATA_FILE, backup)
+            self.data = {}
+            messagebox.showwarning(
+                "Data file problem",
+                f"Couldn't read your saved data. A copy of the file was saved as:\n{backup}")
 
-    def save_data(self):    # Save P&L data to JSON file
-        with open(DATA_FILE, "w") as f:
-            json.dump(self.data, f, indent=2)
+    def save_data(self):    # Save P&L data to JSON file safely
+        tmp = DATA_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({**self.data, "_day_details": self.day_details}, f, indent=2)
+        os.replace(tmp, DATA_FILE)
 
     def key_for(self, year, month, day):    # Generate a key for storing P&L data in the format: YYYY-MM-DD
         return f"{year}-{month:02d}-{day:02d}"
@@ -127,6 +159,11 @@ class PnLCalendar:
         if self.cur_month == 0:
             self.cur_month = 12
             self.cur_year -= 1
+        self.refresh()
+
+    def go_today(self):
+        self.cur_year = self.today.year
+        self.cur_month = self.today.month
         self.refresh()
 
     def next_month(self):   # Navigate to the next month and refresh the calendar
@@ -157,7 +194,7 @@ class PnLCalendar:
         self.grid_frame.config(bg=COLOR_GRID)   # shows through as grid lines
 
         # Weekday header bar
-        weekdays = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
+        weekdays = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT", "WEEK"]
         for col, name in enumerate(weekdays):
             tk.Label(self.grid_frame, text=name, font=("Arial", 10, "bold"),
                      bg=COLOR_HEADER, fg=COLOR_TEXT, pady=6
@@ -170,6 +207,15 @@ class PnLCalendar:
         prefix = f"{self.cur_year}-{self.cur_month:02d}"
         month_vals = [v for k, v in self.data.items() if k.startswith(prefix)]
         max_abs = max((abs(v) for v in month_vals), default=1) or 1
+
+        # Weekly totals (only counts days inside the viewed month)
+        week_totals = []
+        for week in weeks:
+            vals = [self.data.get(self.key_for(d.year, d.month, d.day))
+                for d in week if d.month == self.cur_month]
+            vals = [v for v in vals if v is not None]
+            week_totals.append(sum(vals) if vals else None)
+        max_week_abs = max((abs(t) for t in week_totals if t is not None), default=1) or 1
 
         # Only the rows actually used should expand
         for r in range(1, 7):
@@ -192,12 +238,15 @@ class PnLCalendar:
 
                 fg = COLOR_TEXT if in_month else COLOR_DIM
                 is_today = (d == self.today)
+                key = self.key_for(d.year, d.month, d.day)
+                details = self.day_details.get(key, {})
+                has_details = bool(details.get("notes") or details.get("tags") or details.get("ticker"))
 
                 cell = tk.Frame(self.grid_frame, bg=bg)
                 cell.grid(row=row, column=col, sticky="nsew", padx=1, pady=1)
 
                 # Day number, top-left (blue badge for today)
-                day_lbl = tk.Label(cell, text=str(d.day), bg=bg, fg=fg,
+                day_lbl = tk.Label(cell, text=f"{d.day}{' *' if has_details else ''}", bg=bg, fg=fg,
                                    font=("Arial", 9, "bold"), anchor="nw")
                 if is_today:
                     day_lbl.config(bg="#1a73e8", fg="#ffffff", padx=5)
@@ -215,27 +264,105 @@ class PnLCalendar:
                     for w in (cell, day_lbl, pnl_lbl):
                         w.bind("<Button-1>", lambda e, dd=d.day: self.edit_day(dd))
 
+            total = week_totals[row - 1]
+            if total is None or total == 0:
+                wbg = COLOR_EMPTY
+            elif total > 0:
+                wbg = blend(COLOR_WIN, COLOR_WIN_STRONG, abs(total) / max_week_abs)
+            else:
+                wbg = blend(COLOR_LOSS, COLOR_LOSS_STRONG, abs(total) / max_week_abs)
+
+            wcell = tk.Frame(self.grid_frame, bg=wbg)
+            wcell.grid(row=row, column=7, sticky="nsew", padx=1, pady=1)
+
+            wk_lbl = tk.Label(wcell, text=f"Wk {row}", bg=wbg, fg=COLOR_DIM,
+                              font=("Arial", 9, "bold"), anchor="nw")
+            wk_lbl.pack(anchor="nw", padx=5, pady=(4, 0))
+            self.day_labels.append(wk_lbl)
+
+            wtotal_lbl = tk.Label(wcell, text=fmt_money(total) if total is not None else "",
+                                  bg=wbg, fg=COLOR_TEXT, font=self.day_font)
+            wtotal_lbl.pack(expand=True)
+            self.pnl_labels.append(wtotal_lbl)
+
         self.update_stats()   
 
-    def edit_day(self, day):    # Open a text box to edit the value for the selected day and update the data
+    def edit_day(self, day):    # Edit the P&L, notes, and tags for a day
         key = self.key_for(self.cur_year, self.cur_month, day)
+        details = self.day_details.get(key, {})
         current = self.data.get(key, "")
+        window = tk.Toplevel(self.root)
+        window.title(f"Day Details - {self.cur_month}/{day}/{self.cur_year}")
+        window.transient(self.root)
+        window.grab_set()
+
+        form = tk.Frame(window, padx=12, pady=12)
+        form.pack(fill="both", expand=True)
+        tk.Label(form, text="P&L ($)").grid(row=0, column=0, sticky="w", pady=4)
+        pnl_entry = tk.Entry(form, width=32)
+        pnl_entry.grid(row=0, column=1, sticky="ew", pady=4)
         if current != "":
-            current = f"{current:g}"
-        val = simpledialog.askstring("Enter P&L", f"P&L for {self.cur_month}/{day}/{self.cur_year}:",initialvalue=str(current))
-        if val is None:
+            pnl_entry.insert(0, f"{current:g}")
+
+        tk.Label(form, text="Ticker").grid(row=1, column=0, sticky="w", pady=4)
+        ticker_entry = tk.Entry(form, width=32)
+        ticker_entry.grid(row=1, column=1, sticky="ew", pady=4)
+        ticker_entry.insert(0, details.get("ticker", ""))
+
+        tk.Label(form, text="Tags (comma-separated)").grid(row=2, column=0, sticky="w", pady=4)
+        tags_entry = tk.Entry(form, width=32)
+        tags_entry.grid(row=2, column=1, sticky="ew", pady=4)
+        tags_entry.insert(0, details.get("tags", ""))
+
+        tk.Label(form, text="Notes").grid(row=3, column=0, sticky="nw", pady=4)
+        notes_text = tk.Text(form, width=32, height=6, wrap="word")
+        notes_text.grid(row=3, column=1, sticky="ew", pady=4)
+        notes_text.insert("1.0", details.get("notes", ""))
+        form.grid_columnconfigure(1, weight=1)
+
+        def save_day():
+            pnl_value = pnl_entry.get().strip()
+            if pnl_value:
+                try:
+                    self.data[key] = float(pnl_value)
+                except ValueError:
+                    messagebox.showerror("Error", "Enter a number please", parent=window)
+                    return
+            else:
+                self.data.pop(key, None)
+
+            notes = notes_text.get("1.0", "end-1c").strip()
+            tags = ", ".join(tag.strip() for tag in tags_entry.get().split(",") if tag.strip())
+            ticker = ticker_entry.get().strip()
+            if notes or tags or ticker:
+                self.day_details[key] = {"notes": notes, "tags": tags, "ticker": ticker}
+            else:
+                self.day_details.pop(key, None)
+
+            self.save_data()
+            window.destroy()
+            self.render_calendar()
+
+        buttons = tk.Frame(form)
+        buttons.grid(row=4, column=0, columnspan=2, sticky="e", pady=(8, 0))
+        tk.Button(
+            buttons,
+            text="Open TradingView chart",
+            command=lambda: self.open_chart(ticker_entry.get(), window),
+        ).pack(side="left", padx=(0, 6))
+        tk.Button(buttons, text="Cancel", command=window.destroy).pack(side="right", padx=(6, 0))
+        tk.Button(buttons, text="Save", command=save_day).pack(side="right")
+        window.bind("<Escape>", lambda _event: window.destroy())
+        pnl_entry.focus_set()
+
+    def open_chart(self, ticker, parent):
+        ticker = ticker.strip()
+        if not ticker:
+            messagebox.showwarning("Ticker required", "Enter a ticker symbol first.", parent=parent)
             return
-        val = val.strip()
-        if val == "":
-            self.data.pop(key, None)
-        else:
-            try:
-                self.data[key] = float(val)
-            except ValueError:
-                messagebox.showerror("Error", "Enter a number please")  # Display an error message if the input is not a valid number
-                return
-        self.save_data()
-        self.render_calendar()
+        chart_url = f"https://www.tradingview.com/chart/?symbol={quote(ticker, safe='')}"
+        if not webbrowser.open(chart_url):
+            messagebox.showerror("Could not open chart", "Your default browser could not be opened.", parent=parent)
 
     def update_stats(self):     # Update the statistics label with the win rate and average P&L for the current month
         prefix = f"{self.cur_year}-{self.cur_month:02d}"
@@ -254,14 +381,17 @@ class PnLCalendar:
 
     def clear_month(self):
         prefix = f"{self.cur_year}-{self.cur_month:02d}"
-        keys_to_delete = [k for k in self.data if k.startswith(prefix)]
+        keys_to_delete = {
+            key for key in (*self.data, *self.day_details) if key.startswith(prefix)
+        }
         if not keys_to_delete:
             messagebox.showinfo("Info", "No trades to clear for this month.")
             return
         confirm = messagebox.askyesno("Confirm", f"Are you sure you want to clear all trades for {self.month_title()}?")
         if confirm:
             for k in keys_to_delete:
-                del self.data[k]
+                self.data.pop(k, None)
+                self.day_details.pop(k, None)
             self.save_data()
             self.render_calendar()
     def check_theme(self):
@@ -273,9 +403,30 @@ class PnLCalendar:
             self.render_calendar()
 
         self.root.after(1000, self.check_theme)
-       
-        
-        
+    def show_graph(self):
+                prefix = f"{self.cur_year}-{self.cur_month:02d}"
+                month_vals = [v for k, v in self.data.items() if k.startswith(prefix)]
+                month_days = [int(k.split('-')[2]) for k in self.data.keys() if k.startswith(prefix)]
+
+                if not month_vals:
+                    messagebox.showinfo("Info", "No trades logged for this month.")
+                    return
+
+                fig, ax = plt.subplots(figsize=(8, 4))
+                ax.bar(month_days, month_vals, color=[COLOR_WIN if v > 0 else COLOR_LOSS for v in month_vals])
+                ax.set_title(f"P&L for {self.month_title()}")
+                ax.set_xlabel("Day of Month")
+                ax.set_ylabel("P&L ($)")
+                ax.axhline(0, color='black', linewidth=0.8)
+
+                # Create a new window to display the graph
+                graph_window = tk.Toplevel(self.root)
+                graph_window.title(f"P&L Graph - {self.month_title()}")
+                canvas = FigureCanvasTkAgg(fig, master=graph_window)
+                canvas.draw()
+                canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+
 if __name__ == "__main__":  # Run the P&L Calendar application
     root = tk.Tk()
     app = PnLCalendar(root)
