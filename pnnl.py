@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, simpledialog, ttk
 from datetime import date, datetime
 import calendar
 import json
@@ -72,6 +72,7 @@ def fmt_money(value, decimals=0):
     sign = "+" if value > 0 else "-"
     return f"{sign}${rounded:,.{decimals}f}"
 
+
 class PnLCalendar:      
     def __init__(self, root):
         self.root = root
@@ -111,14 +112,27 @@ class PnLCalendar:
         
         calendar.setfirstweekday(calendar.SUNDAY)
 
-        self.stats_lbl = tk.Label(root, text="", font=("Arial", 11))    # Build the statistics label to display win rate and average P&L for the current month
-        self.stats_lbl.pack(pady=(0, 10))
+        self.footer = tk.Frame(root)
+        self.footer.pack(fill="x", padx=10, pady=(0, 10))
+        self.stats_lbl = tk.Label(
+            self.footer,
+            text="",
+            font=("Arial", 11),
+            anchor="w",
+        )
+        self.stats_lbl.pack(side="left")
+        tk.Button(
+            self.footer,
+            text="Trade",
+            command=self.prompt_robinhood_trade,
+        ).pack(side="right")
         self.day_font = ("Arial", 10)
         self.render_calendar() # Render the calendar for the current month
         # This will update the theme in real time if you change between dark/light mode when the program i running.
         self.dark_mode = darkdetect.isDark()
         self.root.after(1000, self.check_theme)
         self.grid_frame.bind("<Configure>", self.on_resize)
+
     def load_data(self):        # Load P&L data from JSON file if it exists
         if not os.path.exists(DATA_FILE):
             return
@@ -407,6 +421,28 @@ class PnLCalendar:
         tk.Button(buttons, text="Save", command=save_day).pack(side="right")
         window.bind("<Escape>", lambda _event: window.destroy())
         pnl_entry.focus_set()
+
+    def prompt_robinhood_trade(self):
+        ticker = simpledialog.askstring(
+            "Trade on Robinhood",
+            "Enter a ticker symbol:",
+            parent=self.root,
+        )
+        if ticker is not None:
+            self.open_robinhood_stock(ticker, self.root)
+
+    def open_robinhood_stock(self, ticker, parent):
+        ticker = ticker.strip()
+        if not ticker:
+            messagebox.showwarning("Ticker required", "Enter a ticker symbol first.", parent=parent)
+            return
+        stock_url = f"https://robinhood.com/stocks/{quote(ticker, safe='')}"
+        if not webbrowser.open(stock_url):
+            messagebox.showerror(
+                "Could not open Robinhood",
+                "Your default browser could not be opened.",
+                parent=parent,
+            )
 
     def open_chart(self, ticker, parent):
         ticker = ticker.strip()
