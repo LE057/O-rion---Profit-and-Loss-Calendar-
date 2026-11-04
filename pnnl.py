@@ -12,6 +12,10 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pnl_data.json") # Store P&L data in a JSON file
+CRYPTO_ALIASES = {
+    "bitcoin": "BTC",
+    "btc": "BTC",
+}
 
 # Add gradient colors for win/loss/empty
 # if darkdetect.isDark(): # This adjust the buttons to adapt if the operating system is in dark mode or light mode 
@@ -436,8 +440,12 @@ class PnLCalendar:
         if not ticker:
             messagebox.showwarning("Ticker required", "Enter a ticker symbol first.", parent=parent)
             return
-        stock_url = f"https://robinhood.com/stocks/{quote(ticker, safe='')}"
-        if not webbrowser.open(stock_url):
+        crypto_symbol = CRYPTO_ALIASES.get(ticker.casefold())
+        if crypto_symbol:
+            robinhood_url = f"https://robinhood.com/crypto/{crypto_symbol}"
+        else:
+            robinhood_url = f"https://robinhood.com/stocks/{quote(ticker, safe='')}"
+        if not webbrowser.open(robinhood_url):
             messagebox.showerror(
                 "Could not open Robinhood",
                 "Your default browser could not be opened.",
