@@ -9,7 +9,7 @@ This is a desktop app coded in Python using the Tkinter library that helps trade
 - Navigate one month at a time with the arrow buttons or Left/Right keys
 - Click on any date to enter the days profit or loss (positive or negative)
 - Add a ticker, comma-separated tags, and a note to each date; dates with details show an asterisk
-- Use the bottom-right Trade button to enter a ticker and open its Robinhood stock page, or open a ticker's TradingView chart from the date editor
+- Use the bottom-right Trade button to enter a stock or common crypto ticker/name and open its Robinhood page, or open a ticker's TradingView chart from the date editor
 - Each box that has a value will either be colored in with green or red
   - Green = Profits
   - Red = Losses
