@@ -164,6 +164,11 @@ class PnLCalendar:
         self.stats_lbl.pack(side="left")
         tk.Button(
             self.footer,
+            text="Graph",
+            command=self.show_graph,
+        ).pack(side="right", padx=(0, 6))
+        tk.Button(
+            self.footer,
             text="Trade",
             command=self.prompt_robinhood_trade,
         ).pack(side="right")
@@ -538,27 +543,33 @@ class PnLCalendar:
 
         self.root.after(1000, self.check_theme)
     def show_graph(self):
-                prefix = f"{self.cur_year}-{self.cur_month:02d}"
-                month_vals = [v for k, v in self.data.items() if k.startswith(prefix)]
-                month_days = [int(k.split('-')[2]) for k in self.data.keys() if k.startswith(prefix)]
+        prefix = f"{self.cur_year}-{self.cur_month:02d}"
+        month_data = sorted(
+            (int(key.split("-")[2]), value)
+            for key, value in self.data.items()
+            if key.startswith(prefix)
+        )
+        if not month_data:
+            messagebox.showinfo("Info", "No trades logged for this month.")
+            return
 
-                if not month_vals:
-                    messagebox.showinfo("Info", "No trades logged for this month.")
-                    return
+        month_days, month_vals = zip(*month_data)
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.bar(
+            month_days,
+            month_vals,
+            color=[COLOR_WIN if value > 0 else COLOR_LOSS for value in month_vals],
+        )
+        ax.set_title(f"P&L for {self.month_title()}")
+        ax.set_xlabel("Day of Month")
+        ax.set_ylabel("P&L ($)")
+        ax.axhline(0, color="black", linewidth=0.8)
 
-                fig, ax = plt.subplots(figsize=(8, 4))
-                ax.bar(month_days, month_vals, color=[COLOR_WIN if v > 0 else COLOR_LOSS for v in month_vals])
-                ax.set_title(f"P&L for {self.month_title()}")
-                ax.set_xlabel("Day of Month")
-                ax.set_ylabel("P&L ($)")
-                ax.axhline(0, color='black', linewidth=0.8)
-
-                # Create a new window to display the graph
-                graph_window = tk.Toplevel(self.root)
-                graph_window.title(f"P&L Graph - {self.month_title()}")
-                canvas = FigureCanvasTkAgg(fig, master=graph_window)
-                canvas.draw()
-                canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        graph_window = tk.Toplevel(self.root)
+        graph_window.title(f"P&L Graph - {self.month_title()}")
+        canvas = FigureCanvasTkAgg(fig, master=graph_window)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
 
 if __name__ == "__main__":  # Run the P&L Calendar application
