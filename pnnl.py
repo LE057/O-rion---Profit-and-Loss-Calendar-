@@ -113,6 +113,57 @@ def fmt_money(value, decimals=0):
     sign = "+" if value > 0 else "-"
     return f"{sign}${rounded:,.{decimals}f}"
 
+def compute_stats(items):
+    """items: list of (date_str, pnl) pairs. Returns a dict of stats, or None if empty."""
+    items = sorted(items)
+    if not items:
+        return None
+    vals = [v for _, v in items]
+    wins = [v for v in vals if v > 0]
+    losses = [v for v in vals if v < 0]
+
+    gross_win = sum(wins)
+    gross_loss = abs(sum(losses))
+
+    # Streaks (flat days, i.e. exactly 0, break a streak)
+    best_win_streak = best_loss_streak = run = 0
+    for v in vals:
+        if v > 0:
+            run = run + 1 if run > 0 else 1
+            best_win_streak = max(best_win_streak, run)
+        elif v < 0:
+            run = run - 1 if run < 0 else -1
+            best_loss_streak = max(best_loss_streak, -run)
+        else:
+            run = 0
+    current_streak = run  # + = win streak, - = loss streak
+
+    # Max drawdown on the cumulative P&L curve (starts from 0)
+    cum = peak = max_dd = 0
+    for v in vals:
+        cum += v
+        peak = max(peak, cum)
+        max_dd = max(max_dd, peak - cum)
+
+    best = max(items, key=lambda x: x[1])
+    worst = min(items, key=lambda x: x[1])
+
+    return {
+        "days": len(vals),
+        "total": sum(vals),
+        "win_rate": len(wins) / len(vals) * 100,
+        "avg_day": sum(vals) / len(vals),
+        "avg_win": gross_win / len(wins) if wins else 0,
+        "avg_loss": -gross_loss / len(losses) if losses else 0,
+        "profit_factor": gross_win / gross_loss if gross_loss else None,
+        "best": best,
+        "worst": worst,
+        "best_win_streak": best_win_streak,
+        "best_loss_streak": best_loss_streak,
+        "current_streak": current_streak,
+        "max_drawdown": max_dd,
+    }
+
 
 class PnLCalendar:      
     def __init__(self, root):
@@ -166,6 +217,11 @@ class PnLCalendar:
             self.footer,
             text="Graph",
             command=self.show_graph,
+        ).pack(side="right", padx=(0, 6))
+        tk.Button(
+            self.footer,
+            text="Stats",
+            command=self.show_stats,
         ).pack(side="right", padx=(0, 6))
         tk.Button(
             self.footer,
@@ -542,6 +598,68 @@ class PnLCalendar:
             self.render_calendar()
 
         self.root.after(1000, self.check_theme)
+        
+    def show_stats(self):
+        window = tk.Toplevel(self.root)
+        window.title("Trading Stats")
+        window.transient(self.root)
+
+        scope = tk.StringVar(value="month")
+        body = tk.Frame(window, padx=16, pady=12)
+
+        top = tk.Frame(window)
+        top.pack(fill="x", padx=16, pady=(12, 0))
+        tk.Radiobutton(top, text=self.month_title(), variable=scope,
+                       value="month", command=lambda: draw()).pack(side="left")
+        tk.Radiobutton(top, text="All Time", variable=scope,
+                       value="all", command=lambda: draw()).pack(side="left", padx=10)
+        body.pack(fill="both", expand=True)
+
+        def draw():
+            for w in body.winfo_children():
+                w.destroy()
+
+            prefix = f"{self.cur_year}-{self.cur_month:02d}"
+            items = [(k, v) for k, v in self.data.items()
+                     if scope.get() == "all" or k.startswith(prefix)]
+            s = compute_stats(items)
+            if s is None:
+                tk.Label(body, text="No trades logged for this period.").pack()
+                return
+
+            pf = f"{s['profit_factor']:.2f}" if s["profit_factor"] is not None else "n/a"
+            streak = s["current_streak"]
+            if streak > 0:
+                cur = f"{streak} win{'s' if streak != 1 else ''}"
+            elif streak < 0:
+                cur = f"{-streak} loss{'es' if streak != -1 else ''}"
+            else:
+                cur = "none"
+
+            rows = [
+                ("Trading days", str(s["days"])),
+                ("Total P&L", fmt_money(s["total"], 2)),
+                ("Win rate", f"{s['win_rate']:.1f}%"),
+                ("Avg day", fmt_money(s["avg_day"], 2)),
+                ("Avg win", fmt_money(s["avg_win"], 2)),
+                ("Avg loss", fmt_money(s["avg_loss"], 2)),
+                ("Profit factor", pf),
+                ("Best day", f"{fmt_money(s['best'][1], 2)}  ({s['best'][0]})"),
+                ("Worst day", f"{fmt_money(s['worst'][1], 2)}  ({s['worst'][0]})"),
+                ("Current streak", cur),
+                ("Longest win streak", str(s["best_win_streak"])),
+                ("Longest loss streak", str(s["best_loss_streak"])),
+                ("Max drawdown", fmt_money(-s["max_drawdown"], 2)),
+            ]
+            for i, (label, value) in enumerate(rows):
+                tk.Label(body, text=label, anchor="w").grid(row=i, column=0, sticky="w", pady=2)
+                tk.Label(body, text=value, anchor="e", font=("Arial", 11, "bold")
+                         ).grid(row=i, column=1, sticky="e", padx=(24, 0), pady=2)
+            body.grid_columnconfigure(1, weight=1)
+
+        draw()
+        window.bind("<Escape>", lambda _e: window.destroy())  
+        
     def show_graph(self):
         prefix = f"{self.cur_year}-{self.cur_month:02d}"
         month_data = sorted(
