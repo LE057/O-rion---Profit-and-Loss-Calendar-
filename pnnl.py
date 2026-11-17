@@ -242,6 +242,7 @@ class PnLCalendar:
         self.dark_mode = darkdetect.isDark()
         self.root.after(1000, self.check_theme)
         self.grid_frame.bind("<Configure>", self.on_resize)
+        tk.Button(self.footer, text="Monthly Summary", command=self.show_monthly_breakdown,).pack(side="right", padx=(0, 6))
 
     def load_data(self):        # Load P&L data from JSON file if it exists
         if not os.path.exists(DATA_FILE):
@@ -774,6 +775,132 @@ class PnLCalendar:
             canvas.draw_idle()
 
         draw()
+    def show_monthly_breakdown(self):
+        prefix = f"{self.cur_year}-{self.cur_month:02d}"
+        month_data = sorted(
+            (int(key.split("-")[2]), value)
+            for key, value in self.data.items()
+            if key.startswith(prefix)
+        )
+        if not month_data:
+            messagebox.showinfo("Info", "No trades logged for this month.")
+            return
+
+        breakdown_window = tk.Toplevel(self.root)
+        breakdown_window.title(f"Monthly Breakdown - {self.month_title()}")
+
+        tree = ttk.Treeview(breakdown_window, columns=("Day", "P&L"), show="headings")
+        tree.heading("Day", text="Day")
+        tree.heading("P&L", text="P&L ($)")
+        tree.column("Day", width=100, anchor="center")
+        tree.column("P&L", width=100, anchor="center")
+
+        for day, value in month_data:
+            tree.insert("", "end", values=(day, fmt_money(value)))
+
+        tree.pack(fill=tk.BOTH, expand=True)        
+        prefix = f"{self.cur_year}-{self.cur_month:02d}"
+
+        # Group monthly profits and losses by ticker
+        profits = {}
+        losses = {}
+
+        for key, value in self.data.items():
+            if key.startswith(prefix):
+                details = self.day_details.get(key, {})
+                ticker = details.get("ticker", "").strip().upper()
+
+                # Put days without a ticker into their own category
+                if not ticker:
+                    ticker = "Unassigned"
+
+                if value > 0:
+                    profits[ticker] = profits.get(ticker, 0) + value
+                elif value < 0:
+                    losses[ticker] = losses.get(ticker, 0) + abs(value)
+
+        # Check whether there is anything to display
+        if not profits and not losses:
+            messagebox.showinfo(
+                "Info",
+                "No profits or losses recorded for this month."
+            )
+            return
+
+        # Create the chart window
+        graph_window = tk.Toplevel(self.root)
+        graph_window.title(
+            f"Monthly Breakdown - {self.month_title()}"
+        )
+        graph_window.geometry("1000x550")
+
+        # Match the chart background to the current theme
+        bg_color = "#2b2b2b" if self.dark_mode else "#ffffff"
+        text_color = "#ffffff" if self.dark_mode else "#000000"
+
+        fig, (profit_ax, loss_ax) = plt.subplots(
+            1, 2, figsize=(11, 5), facecolor=bg_color
+        )
+
+        fig.suptitle(
+            f"Monthly P&L Breakdown - {self.month_title()}",
+            color=text_color,
+            fontsize=14,
+        )
+
+        def draw_pie(ax, grouped_data, title):
+            ax.set_facecolor(bg_color)
+            ax.set_title(title, color=text_color)
+
+            if not grouped_data:
+                ax.text(
+                    0.5, 0.5,
+                    "No data recorded",
+                    ha="center",
+                    va="center",
+                    color=text_color,
+                    transform=ax.transAxes,
+                )
+                return
+
+            tickers = list(grouped_data.keys())
+            values = list(grouped_data.values())
+
+            colors = [
+                plt.get_cmap("tab20")(i % 20)
+                for i in range(len(tickers))
+            ]
+
+            wedges, _, _ = ax.pie(
+                values,
+                colors=colors,
+                autopct="%1.1f%%",
+                startangle=90,
+                pctdistance=0.75,
+                wedgeprops={"width": 0.45},
+            )
+
+            legend_labels = [
+                f"{ticker}: {fmt_money(value, 2)}"
+                for ticker, value in grouped_data.items()
+            ]
+
+            ax.legend(
+                wedges,
+                legend_labels,
+                loc="lower center",
+                bbox_to_anchor=(0.5, -0.15),
+                fontsize=8,
+            )
+
+        draw_pie(profit_ax, profits, "Profits by Company")
+        draw_pie(loss_ax, losses, "Losses by Company")
+
+        fig.tight_layout(rect=[0, 0.08, 1, 0.92])
+
+        canvas = FigureCanvasTkAgg(fig, master=graph_window)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
 if __name__ == "__main__":  # Run the P&L Calendar application
     root = tk.Tk()
