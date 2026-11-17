@@ -1,8 +1,9 @@
 import tkinter as tk
-from tkinter import messagebox, simpledialog, ttk
+from tkinter import messagebox, simpledialog, ttk, filedialog
 from datetime import date, datetime
 import calendar
 import json
+import csv
 import os
 from urllib.parse import quote
 import webbrowser
@@ -224,6 +225,11 @@ class PnLCalendar:
             self.footer,
             text="Stats",
             command=self.show_stats,
+        ).pack(side="right", padx=(0, 6))
+        tk.Button(
+            self.footer,
+            text="Export",
+            command=self.export_csv,
         ).pack(side="right", padx=(0, 6))
         tk.Button(
             self.footer,
@@ -600,6 +606,41 @@ class PnLCalendar:
             self.render_calendar()
 
         self.root.after(1000, self.check_theme)
+        
+    def export_csv(self):
+        keys = sorted(set(self.data) | set(self.day_details))
+        if not keys:
+            messagebox.showinfo("Info", "No data to export yet.")
+            return
+
+        path = filedialog.asksaveasfilename(
+            parent=self.root,
+            title="Export P&L to CSV",
+            defaultextension=".csv",
+            initialfile=f"pnl_export_{date.today().isoformat()}.csv",
+            filetypes=[("CSV files", "*.csv")],
+        )
+        if not path:  # user cancelled
+            return
+
+        try:
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["Date", "P&L", "Ticker", "Tags", "Notes"])
+                for key in keys:
+                    details = self.day_details.get(key, {})
+                    writer.writerow([
+                        key,
+                        self.data.get(key, ""),
+                        details.get("ticker", ""),
+                        details.get("tags", ""),
+                        details.get("notes", ""),
+                    ])
+        except OSError as e:
+            messagebox.showerror("Export failed", f"Couldn't write the file:\n{e}")
+            return
+
+        messagebox.showinfo("Exported", f"Saved {len(keys)} days to:\n{path}")
         
     def show_stats(self):
         window = tk.Toplevel(self.root)
