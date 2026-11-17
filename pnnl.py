@@ -8,7 +8,9 @@ from urllib.parse import quote
 import webbrowser
 import darkdetect
 import shutil
-import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from matplotlib.figure import Figure
+from matplotlib.ticker import FuncFormatter
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pnl_data.json") # Store P&L data in a JSON file
@@ -661,34 +663,76 @@ class PnLCalendar:
         window.bind("<Escape>", lambda _e: window.destroy())  
         
     def show_graph(self):
-        prefix = f"{self.cur_year}-{self.cur_month:02d}"
-        month_data = sorted(
-            (int(key.split("-")[2]), value)
-            for key, value in self.data.items()
-            if key.startswith(prefix)
-        )
-        if not month_data:
-            messagebox.showinfo("Info", "No trades logged for this month.")
-            return
+        window = tk.Toplevel(self.root)
+        window.title("P&L Graph")
+        window.geometry("820x480")
 
-        month_days, month_vals = zip(*month_data)
-        fig, ax = plt.subplots(figsize=(8, 4))
-        ax.bar(
-            month_days,
-            month_vals,
-            color=[COLOR_WIN if value > 0 else COLOR_LOSS for value in month_vals],
-        )
-        ax.set_title(f"P&L for {self.month_title()}")
-        ax.set_xlabel("Day of Month")
-        ax.set_ylabel("P&L ($)")
-        ax.axhline(0, color="black", linewidth=0.8)
+        view = tk.StringVar(value="curve")
+        scope = tk.StringVar(value="month")
 
-        graph_window = tk.Toplevel(self.root)
-        graph_window.title(f"P&L Graph - {self.month_title()}")
-        canvas = FigureCanvasTkAgg(fig, master=graph_window)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        controls = tk.Frame(window)
+        controls.pack(fill="x", padx=10, pady=(8, 0))
+        tk.Radiobutton(controls, text="Equity Curve", variable=view,
+                       value="curve", command=lambda: draw()).pack(side="left")
+        tk.Radiobutton(controls, text="Daily P&L", variable=view,
+                       value="bars", command=lambda: draw()).pack(side="left", padx=(0, 20))
+        tk.Radiobutton(controls, text=self.month_title(), variable=scope,
+                       value="month", command=lambda: draw()).pack(side="left")
+        tk.Radiobutton(controls, text="All Time", variable=scope,
+                       value="all", command=lambda: draw()).pack(side="left")
 
+        fig = Figure(figsize=(8, 4), dpi=100)
+        ax = fig.add_subplot(111)
+        canvas = FigureCanvasTkAgg(fig, master=window)
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+
+        def draw():
+            ax.clear()
+            prefix = f"{self.cur_year}-{self.cur_month:02d}"
+            items = sorted(
+                (datetime.strptime(k, "%Y-%m-%d"), v)
+                for k, v in self.data.items()
+                if scope.get() == "all" or k.startswith(prefix)
+            )
+
+            if not items:
+                ax.text(0.5, 0.5, "No trades logged for this period",
+                        ha="center", va="center", transform=ax.transAxes)
+                canvas.draw_idle()
+                return
+
+            dates = [d for d, _ in items]
+            vals = [v for _, v in items]
+            period = self.month_title() if scope.get() == "month" else "All Time"
+
+            if view.get() == "curve":
+                cum, total = [], 0
+                for v in vals:
+                    total += v
+                    cum.append(total)
+                line_color = COLOR_WIN_STRONG if cum[-1] >= 0 else COLOR_LOSS_STRONG
+                ax.plot(dates, cum, color=line_color, linewidth=2, marker="o", markersize=4)
+                ax.fill_between(dates, cum, 0, where=[c >= 0 for c in cum],
+                                color=COLOR_WIN_STRONG, alpha=0.2, interpolate=True)
+                ax.fill_between(dates, cum, 0, where=[c < 0 for c in cum],
+                                color=COLOR_LOSS_STRONG, alpha=0.2, interpolate=True)
+                ax.set_title(f"Equity Curve - {period}  ({fmt_money(cum[-1])})")
+                ax.set_ylabel("Cumulative P&L")
+            else:
+                ax.bar(dates, vals, width=0.8,
+                       color=[COLOR_WIN_STRONG if v > 0 else COLOR_LOSS_STRONG for v in vals])
+                ax.set_title(f"Daily P&L - {period}")
+                ax.set_ylabel("P&L")
+
+            ax.axhline(0, color="black", linewidth=0.8)
+            ax.grid(alpha=0.25)
+            ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: fmt_money(x)))
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
+            fig.autofmt_xdate()
+            fig.tight_layout()
+            canvas.draw_idle()
+
+        draw()
 
 if __name__ == "__main__":  # Run the P&L Calendar application
     root = tk.Tk()
